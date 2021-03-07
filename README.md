@@ -1,9 +1,13 @@
 # cryptonomicon
 
+Simple crypto screener with graph
+
 ## Project setup
 ```
 npm install
 ```
+* Create file ".env.local" in directory root
+* Set variable VUE_APP_API_KEY="your api key from https://min-api.cryptocompare.com/"
 
 ### Compiles and hot-reloads for development
 ```
