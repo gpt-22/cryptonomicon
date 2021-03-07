@@ -14,17 +14,17 @@
       <section>
         <div class="flex">
           <div class="max-w-xs">
-            <label for="wallet" class="block text-sm font-medium text-gray-700">
+            <label for="ticker" class="block text-sm font-medium text-gray-700">
               Тикер
             </label>
             <div class="mt-1 relative rounded-md shadow-md">
               <input
-                  v-model="input"
+                  v-model="coinName"
                   @input="filterHints"
                   @keypress.enter="addCoin"
                   type="text"
-                  name="wallet"
-                  id="wallet"
+                  name="ticker"
+                  id="ticker"
                   autocomplete="off"
                   class="block w-full pr-10 border-gray-300 text-gray-900 focus:outline-none focus:ring-gray-500 focus:border-gray-500 sm:text-sm rounded-md"
                   placeholder="Например, DOGE"
@@ -62,12 +62,51 @@
       </section>
       <!-- /form -->
 
-      <!-- coins-cards -->
+
       <template v-if="addedCoins.length">
+        <!-- filter -->
         <hr class="w-full border-t border-gray-600 my-4" />
+        <div class="flex">
+          <div class="max-w-xs">
+            <label for="filter" class="block text-sm font-medium text-gray-700">
+              Фильтр
+            </label>
+            <div class="mt-1 relative rounded-md shadow-md">
+              <input
+                  v-model="filter"
+                  @input="filterAddedCoins()"
+                  type="text"
+                  name="filter"
+                  id="filter"
+                  class="block pr-10 border-gray-300 text-gray-900 focus:outline-none focus:ring-gray-500 focus:border-gray-500 sm:text-sm rounded-md"
+                  placeholder="Например, DOGE"
+              >
+            </div>
+          </div>
+          <div class="mx-4 mt-2">
+            <button
+                @click="page--"
+                :disabled="page === 1"
+                class="mx-1 my-4 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50"
+            >
+              Назад
+            </button>
+            <button
+                @click="page++"
+                :disabled="this.page === this.lastPage"
+                class="mx-1 my-4 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50"
+            >
+              Вперёд
+            </button>
+          </div>
+        </div>
+        <hr class="w-full border-t border-gray-600 my-4" />
+        <!-- /filter -->
+
+        <!-- coins-cards -->
         <dl class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
           <div
-              v-for="coin in addedCoins"
+              v-for="coin in filterAddedCoins()"
               @click="select(coin)"
               :key="coin.Id"
               :class="isActive(coin) ? 'border-4' : ''"
@@ -104,8 +143,8 @@
           </div>
         </dl>
         <hr class="w-full border-t border-gray-600 my-4" />
+        <!-- /coins-cards -->
       </template>
-      <!-- /coins-cards -->
 
       <!-- graph -->
       <section v-if="selected" class="relative">
@@ -161,16 +200,27 @@ export default {
   data() {
     return {
       dataLoading: true,
-      input: '',
+      coinName: '',
       coins: [],
       addedCoins: [],
       selected: null,
       hints: ['BTC', 'ETH', 'BCH', 'DOGE'],
-      graph: []
+      graph: [],
+      page: 1,
+      lastPage: 1,
+      filter: ''
     }
   },
 
   created() {
+    const windowData = Object.fromEntries(new URL(window.location).searchParams.entries())
+    if (windowData.filter) {
+      this.filter = windowData.filter
+    }
+    if (windowData.page) {
+      this.page = windowData.page
+    }
+
     const savedCoinsData = JSON.parse(localStorage.getItem('cryptonomicon-added-coins'))
     if (savedCoinsData) {
       this.addedCoins = savedCoinsData
@@ -204,15 +254,21 @@ export default {
     },
 
     setInput(value) {
-      this.input = value
+      this.coinName = value
     },
 
     isCoinNameStartsWith(coin, name) {
-      return coin.Symbol.startsWith(name) || coin.FullName.startsWith(name)
+      if (coin && name) {
+        const capitalizedName = name[0].toUpperCase() + name.slice(1)
+        const uppercaseName = name.toUpperCase()
+        return coin.Symbol.startsWith(uppercaseName) || coin.FullName.startsWith(capitalizedName)
+      }
     },
 
-    getSortedTickersByName(name) {
-      const tickers = Object.keys(this.coins)
+    getSortedTickersByName(name, coinsArray=this.coins) {
+      const tickers = coinsArray instanceof Array
+          ? this.addedCoins.map(coin => coin.Symbol)
+          : Object.keys(coinsArray)
       return tickers.filter(ticker => {
         const coin = this.coins[ticker]
         return this.isCoinNameStartsWith(coin, name)
@@ -223,40 +279,47 @@ export default {
       // search coin by ticker or full name in all coins array
       const ticker = this.getSortedTickersByName(name)[0]
       const coin = this.coins[ticker]
-      if (ticker) {
-        console.log('coin found:', coin)
-        return coin
-      } else {
-        console.log('coin not found')
-        return false
-      }
+      return ticker ? coin : false
     },
 
     addCoin() {
-      if (!this.input.length) return false
+      if (!this.coinName.length) return false
       console.log('adding a new coin')
-      const coin = this.searchCoin(this.input)
-      if (!Object.keys(this.addedCoins).includes(coin.Symbol)) {
+      const coin = this.searchCoin(this.coinName)
+      if (!this.addedCoins.map(coin => coin.Symbol).includes(coin.Symbol)) {
         this.subscribeToUpdates(coin)
+
+        // change page
+        if (this.addedCoins.length === this.lastPage*6) {
+          this.lastPage++
+          this.page = this.lastPage
+        }
 
         this.addedCoins.push(coin)
         localStorage.setItem('cryptonomicon-added-coins', JSON.stringify(this.addedCoins))
 
-        this.input = ''
+        this.coinName = ''
         this.hints = ['BTC', 'ETH', 'BCH', 'DOGE']
       }
     },
 
     deleteCoin(coinToDelete) {
+      // change page
+      if (this.addedCoins.length === (this.lastPage - 1)*6 + 1) {
+        this.lastPage--
+        this.page = this.lastPage
+      }
+
       if (this.selected === coinToDelete) this.selected = null
       this.addedCoins = this.addedCoins.filter(coin => coin !== coinToDelete)
+      localStorage.setItem('cryptonomicon-added-coins', JSON.stringify(this.addedCoins))
     },
 
     isCoinAdded() {
-      if (!this.input.length) return false
+      if (!this.coinName.length) return false
 
-      const coin = this.searchCoin(this.input)
-      return coin ? Object.keys(this.addedCoins).includes(coin.Symbol) : false
+      const coin = this.searchCoin(this.coinName)
+      return coin ? this.addedCoins.map(coin => coin.Symbol).includes(coin.Symbol) : false
     },
 
     select(coin) {
@@ -269,9 +332,9 @@ export default {
     },
 
     filterHints() {
-      if (!this.input.length) this.hints = []
+      if (!this.coinName.length) this.hints = []
 
-      this.hints = this.getSortedTickersByName(this.input).slice(0, 4)
+      this.hints = this.getSortedTickersByName(this.coinName).slice(0, 4)
     },
 
     normalizeGraph() {
@@ -279,6 +342,45 @@ export default {
       const minValue = Math.min(...this.graph)
       return this.graph.map(
           price => 5 + ((price - minValue) * 95) / (maxValue - minValue)
+      )
+    },
+
+    filterAddedCoins() {
+      // write it in computed!
+      this.lastPage = Math.ceil(this.addedCoins.length / 6)
+      const start = 6*(this.page - 1) // 0, 6, 12,...
+      const end = 6*this.page // 6, 12, 18 ...
+
+      const filteredTickers = this.getSortedTickersByName(this.filter, this.addedCoins)
+      const filteredCoins = filteredTickers.map(ticker => {
+        return this.addedCoins.find(coin => coin.Symbol === ticker)
+      })
+
+      let filteredArray
+      if (filteredCoins.length) filteredArray = filteredCoins
+      else if (this.filter.length) filteredArray = []
+      else filteredArray = this.addedCoins
+      console.log(filteredArray.slice(start, end))
+
+      return filteredArray.slice(start, end)
+    }
+  },
+
+  watch: {
+    filter() {
+      this.page = 1
+      this.lastPage = Math.ceil(this.filterAddedCoins().length / 6)
+      window.history.pushState(
+          null,
+          document.title,
+          `${window.location.pathname}?filter=${this.filter}&page=${this.page}`
+      )
+    },
+    page() {
+      window.history.pushState(
+          null,
+          document.title,
+          `${window.location.pathname}?filter=${this.filter}&page=${this.page}`
       )
     }
   }
