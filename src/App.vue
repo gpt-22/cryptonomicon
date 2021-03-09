@@ -145,9 +145,9 @@
       </template>
 
       <!-- graph -->
-      <section v-if="selected" class="relative">
+      <section v-if="selectedCoin" class="relative">
         <h3 class="text-lg leading-6 font-medium text-gray-900 my-8">
-          {{ selected.Symbol }} - USD
+          {{ selectedCoin.Symbol }} - USD
         </h3>
         <div class="flex items-end border-gray-600 border-b border-l h-64 overflow-hidden">
           <div
@@ -159,7 +159,7 @@
           </div>
         </div>
         <button
-            @click="selected = null"
+            @click="selectedCoin = null"
             type="button"
             class="absolute top-0 right-0"
         >
@@ -203,7 +203,7 @@ export default {
       graph: [],
       coinName: '',
       filter: '',
-      selected: null,
+      selectedCoin: null,
       page: 1,
       lastPage: 1,
       hasNextPage: false
@@ -269,34 +269,50 @@ export default {
       return this.graph.map(
           price => 5 + ((price - minValue) * 95) / (maxValue - minValue)
       )
+    },
+
+    pageStateOptions() {
+      return {
+        filter: this.filter,
+        page: this.page,
+        lastPage: this.lastPage
+      }
     }
   },
 
   watch: {
+    addedCoins(newValue, oldValue) {
+      localStorage.setItem('cryptonomicon-added-coins', JSON.stringify(this.addedCoins))
+
+      if (newValue.length > this.lastPage*6) {
+        this.lastPage++
+      } else if ((this.lastPage > 1) && (newValue.length === (this.lastPage - 1)*6)) {
+        this.lastPage--
+      }
+
+      if (oldValue.length) this.page = this.lastPage
+    },
+
     filteredCoins() {
       this.lastPage = Math.ceil(this.filteredCoins.length / 6)
     },
 
     filter() {
       this.page = 1
+    },
+
+    pageStateOptions(newState) {
       window.history.pushState(
           null,
           document.title,
-          `${window.location.pathname}?filter=${this.filter}&page=${this.page}`
+          `${window.location.pathname}?filter=${newState.filter}&page=${newState.page}`
       )
+
+      this.hasNextPage = newState.page !== newState.lastPage
     },
 
-    page() {
-      this.setHasNextPage()
-      window.history.pushState(
-          null,
-          document.title,
-          `${window.location.pathname}?filter=${this.filter}&page=${this.page}`
-      )
-    },
-
-    lastPage() {
-      this.setHasNextPage()
+    selectedCoin() {
+      this.graph = []
     }
   },
 
@@ -309,14 +325,10 @@ export default {
         const f = await fetch(url)
         const data = await f.json()
         coin.price = data.USD
-        if (this.selected === coin) {
+        if (this.selectedCoin === coin) {
           this.graph.push(data.USD)
         }
       }, 1000)
-    },
-
-    setHasNextPage() {
-      this.hasNextPage = this.page !== this.lastPage
     },
 
     hintClickHandler(hint) {
@@ -353,31 +365,15 @@ export default {
       const coin = this.searchCoin(this.coinName)
       if (!this.addedCoins.map(coin => coin.Symbol).includes(coin.Symbol)) {
         this.subscribeToUpdates(coin)
-
-        // change page
-        if (this.addedCoins.length === this.lastPage*6) {
-          this.lastPage++
-        }
-        this.page = this.lastPage
-
-        this.addedCoins.push(coin)
-        localStorage.setItem('cryptonomicon-added-coins', JSON.stringify(this.addedCoins))
-
+        this.addedCoins = [...this.addedCoins, coin]
         this.coinName = ''
         this.hints = ['BTC', 'ETH', 'BCH', 'DOGE']
       }
     },
 
     deleteCoin(coinToDelete) {
-      // change page
-      if ((this.lastPage !== 1) && (this.addedCoins.length === (this.lastPage - 1)*6 + 1)) {
-        this.lastPage--
-      }
-      this.page = this.lastPage
-
-      if (this.selected === coinToDelete) this.selected = null
+      if (this.selectedCoin === coinToDelete) this.selectedCoin = null
       this.addedCoins = this.addedCoins.filter(coin => coin !== coinToDelete)
-      localStorage.setItem('cryptonomicon-added-coins', JSON.stringify(this.addedCoins))
     },
 
     isCoinAdded() {
@@ -388,12 +384,11 @@ export default {
     },
 
     select(coin) {
-      this.selected = coin
-      this.graph = []
+      this.selectedCoin = coin
     },
 
     isActive(coin) {
-      return this.selected === coin
+      return this.selectedCoin === coin
     },
 
     filterHints() {
@@ -404,7 +399,7 @@ export default {
 }
 
 /* TODO:
-2. наличие в состоянии зависимых данных, критичность: 5+
+2. наличие в состоянии зависимых данных, критичность: 6 +
 4. при удалении остаётся подписка на загрузку данных о тикере, критичность: 5
 6. запросы напрямую внутри компонента, критичность: 5
 7. обработка ошибок API, критичность: 5
@@ -418,7 +413,7 @@ export default {
 1. При удалении всех coins страница должна быть 1, а не 0 +
 2. При загрузке страницы пофиксить disabled у кнопок вперед и назад +
 3. При добавлении тикера страница всегда переключается на последнюю +
-
+4. При клике на график больше раза он сбрасывается +
  */
 
 </script>
