@@ -1,7 +1,7 @@
 <template>
   <div class="container mx-auto flex flex-col items-center bg-gray-100 p-4">
     <!-- loader -->
-    <div v-if="dataLoading" class="fixed w-100 h-100 opacity-80 bg-purple-800 inset-0 z-50 flex items-center justify-center">
+    <div v-if="coins.length === 0" class="fixed w-100 h-100 opacity-80 bg-purple-800 inset-0 z-50 flex items-center justify-center">
       <svg class="animate-spin -ml-1 mr-3 h-12 w-12 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -34,31 +34,31 @@
               <span
                   v-for="hint in hints"
                   :key="hint"
-                  @click="setInput(hint)"
+                  @click="hintClickHandler(hint)"
                   class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer">
                 {{ hint }}
               </span>
             </div>
             <div v-show="isCoinAdded()" class="text-sm text-red-600">Такой тикер уже добавлен</div>
           </div>
-        </div>
-        <button
-            @click="addCoin"
-            type="button"
-            class="my-4 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
-        >
-          <svg
-              class="-ml-0.5 mr-2 h-6 w-6"
-              xmlns="http://www.w3.org/2000/svg"
-              width="30"
-              height="30"
-              viewBox="0 0 24 24"
-              fill="#ffffff"
+          <button
+              @click="addCoin"
+              type="button"
+              class="my-6 mx-4 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
           >
-            <path d="M13 7h-2v4H7v2h4v4h2v-4h4v-2h-4V7zm-1-5C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"></path>
-          </svg>
-          Добавить
-        </button>
+            <svg
+                class="-ml-0.5 mr-2 h-6 w-6"
+                xmlns="http://www.w3.org/2000/svg"
+                width="30"
+                height="30"
+                viewBox="0 0 24 24"
+                fill="#ffffff"
+            >
+              <path d="M13 7h-2v4H7v2h4v4h2v-4h4v-2h-4V7zm-1-5C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"></path>
+            </svg>
+            Добавить
+          </button>
+        </div>
       </section>
       <!-- /form -->
 
@@ -74,7 +74,6 @@
             <div class="mt-1 relative rounded-md shadow-md">
               <input
                   v-model="filter"
-                  @input="filterAddedCoins()"
                   type="text"
                   name="filter"
                   id="filter"
@@ -86,27 +85,26 @@
           <div class="mx-4 mt-2">
             <button
                 @click="page--"
-                :disabled="page === 1"
+                :disabled="page < 2"
                 class="mx-1 my-4 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50"
             >
               Назад
             </button>
             <button
                 @click="page++"
-                :disabled="this.page === this.lastPage"
+                :disabled="!this.hasNextPage"
                 class="mx-1 my-4 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50"
             >
               Вперёд
             </button>
           </div>
         </div>
-        <hr class="w-full border-t border-gray-600 my-4" />
         <!-- /filter -->
 
         <!-- coins-cards -->
         <dl class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
           <div
-              v-for="coin in filterAddedCoins()"
+              v-for="coin in paginatedCoins"
               @click="select(coin)"
               :key="coin.Id"
               :class="isActive(coin) ? 'border-4' : ''"
@@ -153,7 +151,7 @@
         </h3>
         <div class="flex items-end border-gray-600 border-b border-l h-64 overflow-hidden">
           <div
-              v-for="(bar,idx) in normalizeGraph()"
+              v-for="(bar,idx) in normalizedGraph"
               :key="idx"
               :style="{ height: `${bar}%`}"
               class="bg-purple-800 border w-1">
@@ -199,16 +197,16 @@ export default {
 
   data() {
     return {
-      dataLoading: true,
-      coinName: '',
       coins: [],
       addedCoins: [],
-      selected: null,
       hints: ['BTC', 'ETH', 'BCH', 'DOGE'],
       graph: [],
+      coinName: '',
+      filter: '',
+      selected: null,
       page: 1,
       lastPage: 1,
-      filter: ''
+      hasNextPage: false
     }
   },
 
@@ -218,7 +216,7 @@ export default {
       this.filter = windowData.filter
     }
     if (windowData.page) {
-      this.page = windowData.page
+      this.page = +windowData.page
     }
 
     const savedCoinsData = JSON.parse(localStorage.getItem('cryptonomicon-added-coins'))
@@ -227,15 +225,79 @@ export default {
       this.addedCoins.forEach(coin => {
         this.subscribeToUpdates(coin)
       })
-      console.log(this.addedCoins)
     }
 
     fetch('https://min-api.cryptocompare.com/data/all/coinlist?summary=true')
         .then(response => response.json())
-        .then(data => {
-          this.coins = data.Data
-          this.dataLoading = false
+        .then(data => this.coins = data.Data)
+  },
+
+  computed: {
+    startPageIndex() {
+      return 6 * (this.page - 1)
+    },
+
+    endPageIndex() {
+      return 6 * this.page
+    },
+
+    filteredCoins() {
+      if (this.filter.length) {
+        const filteredTickers = this.getSortedTickersByName(this.filter, this.addedCoins)
+        return filteredTickers.map(ticker => {
+          return this.addedCoins.find(coin => coin.Symbol === ticker)
         })
+      } else {
+        return this.addedCoins
+      }
+    },
+
+    paginatedCoins() {
+      if (this.filteredCoins.length) {
+        return this.filteredCoins.slice(this.startPageIndex, this.endPageIndex)
+      } else if (this.filter.length) {
+        return []
+      } else return this.addedCoins.slice(this.startPageIndex, this.endPageIndex)
+    },
+
+    normalizedGraph() {
+      const maxValue = Math.max(...this.graph)
+      const minValue = Math.min(...this.graph)
+      if (maxValue === minValue) {
+        return this.graph.map(() => 50)
+      }
+      return this.graph.map(
+          price => 5 + ((price - minValue) * 95) / (maxValue - minValue)
+      )
+    }
+  },
+
+  watch: {
+    filteredCoins() {
+      this.lastPage = Math.ceil(this.filteredCoins.length / 6)
+    },
+
+    filter() {
+      this.page = 1
+      window.history.pushState(
+          null,
+          document.title,
+          `${window.location.pathname}?filter=${this.filter}&page=${this.page}`
+      )
+    },
+
+    page() {
+      this.setHasNextPage()
+      window.history.pushState(
+          null,
+          document.title,
+          `${window.location.pathname}?filter=${this.filter}&page=${this.page}`
+      )
+    },
+
+    lastPage() {
+      this.setHasNextPage()
+    }
   },
 
   methods: {
@@ -253,8 +315,12 @@ export default {
       }, 1000)
     },
 
-    setInput(value) {
-      this.coinName = value
+    setHasNextPage() {
+      this.hasNextPage = this.page !== this.lastPage
+    },
+
+    hintClickHandler(hint) {
+      this.coinName = hint
     },
 
     isCoinNameStartsWith(coin, name) {
@@ -284,7 +350,6 @@ export default {
 
     addCoin() {
       if (!this.coinName.length) return false
-      console.log('adding a new coin')
       const coin = this.searchCoin(this.coinName)
       if (!this.addedCoins.map(coin => coin.Symbol).includes(coin.Symbol)) {
         this.subscribeToUpdates(coin)
@@ -292,8 +357,8 @@ export default {
         // change page
         if (this.addedCoins.length === this.lastPage*6) {
           this.lastPage++
-          this.page = this.lastPage
         }
+        this.page = this.lastPage
 
         this.addedCoins.push(coin)
         localStorage.setItem('cryptonomicon-added-coins', JSON.stringify(this.addedCoins))
@@ -305,10 +370,10 @@ export default {
 
     deleteCoin(coinToDelete) {
       // change page
-      if (this.addedCoins.length === (this.lastPage - 1)*6 + 1) {
+      if ((this.lastPage !== 1) && (this.addedCoins.length === (this.lastPage - 1)*6 + 1)) {
         this.lastPage--
-        this.page = this.lastPage
       }
+      this.page = this.lastPage
 
       if (this.selected === coinToDelete) this.selected = null
       this.addedCoins = this.addedCoins.filter(coin => coin !== coinToDelete)
@@ -333,58 +398,29 @@ export default {
 
     filterHints() {
       if (!this.coinName.length) this.hints = []
-
       this.hints = this.getSortedTickersByName(this.coinName).slice(0, 4)
-    },
-
-    normalizeGraph() {
-      const maxValue = Math.max(...this.graph)
-      const minValue = Math.min(...this.graph)
-      return this.graph.map(
-          price => 5 + ((price - minValue) * 95) / (maxValue - minValue)
-      )
-    },
-
-    filterAddedCoins() {
-      // write it in computed!
-      this.lastPage = Math.ceil(this.addedCoins.length / 6)
-      const start = 6*(this.page - 1) // 0, 6, 12,...
-      const end = 6*this.page // 6, 12, 18 ...
-
-      const filteredTickers = this.getSortedTickersByName(this.filter, this.addedCoins)
-      const filteredCoins = filteredTickers.map(ticker => {
-        return this.addedCoins.find(coin => coin.Symbol === ticker)
-      })
-
-      let filteredArray
-      if (filteredCoins.length) filteredArray = filteredCoins
-      else if (this.filter.length) filteredArray = []
-      else filteredArray = this.addedCoins
-      console.log(filteredArray.slice(start, end))
-
-      return filteredArray.slice(start, end)
-    }
-  },
-
-  watch: {
-    filter() {
-      this.page = 1
-      this.lastPage = Math.ceil(this.filterAddedCoins().length / 6)
-      window.history.pushState(
-          null,
-          document.title,
-          `${window.location.pathname}?filter=${this.filter}&page=${this.page}`
-      )
-    },
-    page() {
-      window.history.pushState(
-          null,
-          document.title,
-          `${window.location.pathname}?filter=${this.filter}&page=${this.page}`
-      )
     }
   }
 }
+
+/* TODO:
+2. наличие в состоянии зависимых данных, критичность: 5+
+4. при удалении остаётся подписка на загрузку данных о тикере, критичность: 5
+6. запросы напрямую внутри компонента, критичность: 5
+7. обработка ошибок API, критичность: 5
+1. обновить lastPage при закгрузке страницы, критичность: 5
+5. количество запросов, критичность: 4
+9. localStorage и анонимные вкладки, критичность: 3
+8. вид графика при множестве цен, критичность: 3
+3. одинаковый код в watch, критичность: 2
+10. magic numbers and strings, критичность: 1
+---------------
+1. При удалении всех coins страница должна быть 1, а не 0 +
+2. При загрузке страницы пофиксить disabled у кнопок вперед и назад +
+3. При добавлении тикера страница всегда переключается на последнюю +
+
+ */
+
 </script>
 
 <style>
