@@ -115,7 +115,7 @@
                 {{ coin.Symbol }} - USD
               </dt>
               <dd class="mt-1 text-3xl font-semibold text-gray-900">
-                {{ coin.price }}
+                {{ formatPrice(coin.price) }}
               </dd>
             </div>
             <div class="w-full border-t border-gray-200"></div>
@@ -192,6 +192,8 @@
 </template>
 
 <script>
+import {loadCoins, subscribeToTickerUpdates, unsubscribeFromTickerUpdates} from '@/api'
+
 export default {
   name: 'App',
 
@@ -212,24 +214,20 @@ export default {
 
   created() {
     const windowData = Object.fromEntries(new URL(window.location).searchParams.entries())
-    if (windowData.filter) {
-      this.filter = windowData.filter
-    }
-    if (windowData.page) {
-      this.page = +windowData.page
-    }
+    if (windowData.filter) this.filter = windowData.filter
+    if (windowData.page) this.page = +windowData.page
 
     const savedCoinsData = JSON.parse(localStorage.getItem('cryptonomicon-added-coins'))
     if (savedCoinsData) {
       this.addedCoins = savedCoinsData
       this.addedCoins.forEach(coin => {
-        this.subscribeToUpdates(coin)
+        subscribeToTickerUpdates(coin.Symbol, (newPrice) => {
+          this.updateCoinPrice(coin.Symbol, newPrice)
+        })
       })
     }
 
-    fetch('https://min-api.cryptocompare.com/data/all/coinlist?summary=true')
-        .then(response => response.json())
-        .then(data => this.coins = data.Data)
+    loadCoins().then(coins => this.coins = coins)
   },
 
   computed: {
@@ -317,18 +315,9 @@ export default {
   },
 
   methods: {
-    subscribeToUpdates(coin) {
-      const apiKey = process.env.VUE_APP_API_KEY
-      const url = `https://min-api.cryptocompare.com/data/price?fsym=${coin.Symbol}&tsyms=USD&api_key=${apiKey}`
-
-      setInterval(async () => {
-        const f = await fetch(url)
-        const data = await f.json()
-        coin.price = data.USD
-        if (this.selectedCoin === coin) {
-          this.graph.push(data.USD)
-        }
-      }, 1000)
+    formatPrice(price) {
+      if (typeof price !== 'number') return '-'
+      return price > 1 ? price.toFixed(2) : price.toPrecision(2)
     },
 
     hintClickHandler(hint) {
@@ -364,8 +353,10 @@ export default {
       if (!this.coinName.length) return false
       const coin = this.searchCoin(this.coinName)
       if (!this.addedCoins.map(coin => coin.Symbol).includes(coin.Symbol)) {
-        this.subscribeToUpdates(coin)
         this.addedCoins = [...this.addedCoins, coin]
+        subscribeToTickerUpdates(coin.Symbol, (newPrice) => {
+          this.updateCoinPrice(coin.Symbol, newPrice)
+        })
         this.coinName = ''
         this.hints = ['BTC', 'ETH', 'BCH', 'DOGE']
       }
@@ -373,6 +364,7 @@ export default {
 
     deleteCoin(coinToDelete) {
       if (this.selectedCoin === coinToDelete) this.selectedCoin = null
+      unsubscribeFromTickerUpdates(coinToDelete.Symbol)
       this.addedCoins = this.addedCoins.filter(coin => coin !== coinToDelete)
     },
 
@@ -394,20 +386,26 @@ export default {
     filterHints() {
       if (!this.coinName.length) this.hints = []
       this.hints = this.getSortedTickersByName(this.coinName).slice(0, 4)
+    },
+
+    updateCoinPrice(ticker, price) {
+      this.addedCoins
+          .filter(coin => coin.Symbol === ticker)
+          .forEach(coin => coin.price = price)
     }
   }
 }
 
 /* TODO:
-2. наличие в состоянии зависимых данных, критичность: 6 +
-4. при удалении остаётся подписка на загрузку данных о тикере, критичность: 5
-6. запросы напрямую внутри компонента, критичность: 5
-7. обработка ошибок API, критичность: 5
-1. обновить lastPage при закгрузке страницы, критичность: 5 +
-5. количество запросов, критичность: 4
-9. localStorage и анонимные вкладки, критичность: 3
+1. наличие в состоянии зависимых данных, критичность: 6 +
+2. API запросы напрямую внутри компонента -> нарушение single responsibility, критичность: 5 +
+3. при тикера удалении остаётся подписка на загрузку данных о нём, критичность: 5
+4. количество запросов, критичность: 4
+5. обработка ошибок API, критичность: 5
+6. обновить lastPage при закгрузке страницы, критичность: 5 +
+7. localStorage и анонимные вкладки, критичность: 3
 8. вид графика при множестве цен, критичность: 3
-3. одинаковый код в watch, критичность: 2 +
+9. одинаковый код в watch, критичность: 2 +
 10. magic numbers and strings, критичность: 1
 ---------------
 1. При удалении всех coins страница должна быть 1, а не 0 +
