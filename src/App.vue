@@ -154,7 +154,7 @@
               v-for="(bar,idx) in normalizedGraph"
               :key="idx"
               :style="{ height: `${bar}%`}"
-              class="bg-purple-800 border w-1">
+              class="bg-purple-800 border w-10">
 
           </div>
         </div>
@@ -317,7 +317,7 @@ export default {
   methods: {
     formatPrice(price) {
       if (typeof price !== 'number') return '-'
-      return price > 1 ? price.toFixed(2) : price.toPrecision(2)
+      return price > 1 ? price.toFixed(2) : price.toPrecision(5)
     },
 
     hintClickHandler(hint) {
@@ -391,7 +391,13 @@ export default {
     updateCoinPrice(ticker, price) {
       this.addedCoins
           .filter(coin => coin.Symbol === ticker)
-          .forEach(coin => coin.price = price)
+          .forEach(coin => {
+            if (coin === this.selectedCoin) {
+              if (this.graph.length > 36) this.graph.shift()
+              this.graph = [...this.graph, price]
+            }
+            coin.price = price
+          })
     }
   }
 }

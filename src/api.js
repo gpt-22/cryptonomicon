@@ -1,6 +1,24 @@
 const apiKey = process.env.VUE_APP_API_KEY
 const socket = new WebSocket(`wss://streamer.cryptocompare.com/v2?api_key=${apiKey}`)
-const tickersHandlers = new Map()
+
+socket.addEventListener('message', e => {
+  const {TYPE: type, FROMSYMBOL: ticker, PRICE: newPrice} = JSON.parse(e.data)
+
+  if (type !== TICKER || newPrice === undefined) return
+  const tickerHandler = tickersHandlersMap.get(ticker)
+  tickerHandler(newPrice)
+
+  pricesChannel.postMessage({ticker: ticker, price: newPrice})
+})
+
+const pricesChannel = new BroadcastChannel('pricesChannel')
+
+pricesChannel.onmessage = (msg) => {
+  const tickerHandler = tickersHandlersMap.get(msg.data.ticker)
+  tickerHandler(msg.data.price)
+}
+
+const tickersHandlersMap = new Map()
 const TICKER = '2'
 
 export const loadCoins = async () => {
@@ -17,9 +35,13 @@ const sendToWebSocket = (message) => {
     return
   }
 
-  socket.addEventListener('open', () => {
-    socket.send(stringifiedMessage)
-  }, {once: true})
+  socket.addEventListener(
+    'open',
+    () => socket.send(stringifiedMessage),
+    {
+      once: true
+    }
+  )
 }
 
 const subscribeToTickerOnWS = (ticker) => {
@@ -37,21 +59,16 @@ const unsubscribeFromTickerOnWS = (ticker) => {
 }
 
 export const subscribeToTickerUpdates = (ticker, callback) => {
-  const subscribers = tickersHandlers.get(ticker) || []
-  tickersHandlers.set(ticker, [...subscribers, callback])
+  tickersHandlersMap.set(ticker, callback)
   subscribeToTickerOnWS(ticker)
 }
 
 export const unsubscribeFromTickerUpdates = (ticker) => {
-  tickersHandlers.delete(ticker)
+  tickersHandlersMap.delete(ticker)
   unsubscribeFromTickerOnWS(ticker)
 }
 
-socket.addEventListener('message', e => {
-  const {TYPE: type, FROMSYMBOL: ticker, PRICE: newPrice} = JSON.parse(e.data)
-
-  if (type !== TICKER) return
-
-  const handlers = tickersHandlers.get(ticker ?? [])
-  handlers.forEach(fn => fn(newPrice))
-})
+/* TODO:
+* 1. do not subscribe via websockets when in new tab
+* 2. rewrite unsubscribeFromTickerUpdates to unsub from particular callback func
+* */
